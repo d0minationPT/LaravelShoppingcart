@@ -19,7 +19,7 @@ class Formatter {
      * @param mixed $item
      * @return bool
      */
-    private function isMulti($item)
+    public function isMulti($item)
     {
         if ( ! is_array($item)) return false;
 
