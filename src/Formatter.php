@@ -50,7 +50,7 @@ class Formatter {
      * @param $thousandSeperator
      * @return string
      */
-    private function numberFormat($value, $formatted = true, $decimals = null, $decimalPoint = null, $thousandSeperator = null)
+    public static function numberFormat($value, $formatted = true, $decimals = null, $decimalPoint = null, $thousandSeperator = null)
     {
         if(!$formatted){
             return $value;
