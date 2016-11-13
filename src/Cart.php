@@ -186,7 +186,7 @@ class Cart
     public function get($rowId)
     {
         $content = $this->getContent();
-
+        
         if ( ! $content->has($rowId))
             throw new InvalidRowIDException("The cart does not contain rowId {$rowId}.");
 
@@ -236,22 +236,26 @@ class Cart
      */
     public function total($formatted = false)
     {
-        $subTotal = $this->getSubTotal(false);
+        $subTotal = $this->subtotal(false);
         $newTotal = 0.00;
         $process = 0;
         $conditions = $this->getConditions();
         // if no conditions were added, just return the sub total
         if( ! $conditions->count() ){
-            return $subTotal;
-        }
-        $conditions->each(function($cond) use ($subTotal, &$newTotal, &$process) {
-            if( $cond->getTarget() === 'subtotal' ){
-                $toBeCalculated = $process > 0 ? $newTotal : $subTotal;
-                $newTotal = $cond->applyCondition($toBeCalculated);
-                $process++;
+            $newTotal = $subTotal;
+        }else{
+            $conditions->each(function($cond) use ($subTotal, &$newTotal, &$process) {
+                if( $cond->getTarget() === CartCondition::TARGET_SUBTOTAL ){
+                    $toBeCalculated = $process > 0 ? $newTotal : $subTotal;
+                    $newTotal = $cond->applyCondition($toBeCalculated);
+                    $process++;
+                }
+            });
+            if($process === 0){
+                $newTotal = $subTotal;
             }
-        });
-        return Formatter::formatValue($newTotal, $formatted);
+        }
+        return Formatter::numberFormat($newTotal, $formatted);
     }
 
     
@@ -260,14 +264,15 @@ class Cart
      * @param bool $formatted
      * @return float
      */
-    public function subTotal($formatted = true)
+    public function subtotal($formatted = false)
     {
         $cart = $this->getContent();
+        
         $sum = $cart->sum(function($item)
         {
             return $item->getPriceSumWithConditions();
         });
-        return Formatter::formatValue(floatval($sum), $formatted);
+        return Formatter::numberFormat($sum, $formatted);
     }
 
     /**
@@ -374,7 +379,7 @@ class Cart
      * @param string $attribute
      * @return float|null
      */
-    /*
+    
     public function __get($attribute)
     {
         if($attribute === 'total') {
@@ -387,7 +392,7 @@ class Cart
 
         return null;
     }
-    */
+    
     
     /**
      * Get the carts content, if there is no cart content set yet, return a new empty Collection
@@ -566,6 +571,38 @@ class Cart
     {
         $this->session->put($this->sessionKeyCartConditions, $conditions);
     }
+        /**
+     * add condition on an existing item on the cart
+     *
+     * @param int|string $rowId
+     * @param CartCondition $itemCondition
+     * @return $this
+     */
+    public function addItemCondition($rowId, CartCondition $itemCondition)
+    {
+        if( $product = $this->get($rowId) )
+        {
+            // we need to copy first to a temporary variable to hold the conditions
+            // to avoid hitting this error "Indirect modification of overloaded element of Darryldecode\Cart\ItemCollection has no effect"
+            // this is due to laravel Collection instance that implements Array Access
+            // // see link for more info: http://stackoverflow.com/questions/20053269/indirect-modification-of-overloaded-element-of-splfixedarray-has-no-effect
+            $itemConditionTempHolder = $product->conditions;
+            if( is_array($itemConditionTempHolder) )
+            {
+                array_push($itemConditionTempHolder, $itemCondition);
+            }
+            else
+            {
+                $itemConditionTempHolder->put($itemCondition->name, $itemCondition);
+            }
+            
+            $this->update($rowId, [
+                'conditions' => $itemConditionTempHolder // the newly updated conditions
+            ]);
+        }
+        return $this;
+    }
+    
     
     /**
      * removes a condition on a cart by condition name,
@@ -689,5 +726,6 @@ class Cart
             []
         );
     }
+    
 
 }

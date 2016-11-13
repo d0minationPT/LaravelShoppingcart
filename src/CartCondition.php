@@ -4,15 +4,13 @@ namespace Gloudemans\Shoppingcart;
 
 use Illuminate\Contracts\Support\Arrayable;
 
-class CartCondition implements Arrayable
+class CartCondition
 {
-    const TYPE_TAX = 1,
-          TYPE_SHIPPING = 2,
-          TYPE_DISCOUNT = 3,
-          TYPE_OTHER = 4,
+    const TYPE_TAX = 'tax',
+          TYPE_DISCOUNT = 'discount',
             
           TARGET_SUBTOTAL = 1,
-          TARGET_TOTAL = 2;
+          TARGET_ITEM = 3;
            
           
     /**
@@ -32,7 +30,7 @@ class CartCondition implements Arrayable
      *
      * @var int
      */
-    public $target;
+    private $target;
     /**
      * The value of the cart condition.
      *
@@ -45,7 +43,15 @@ class CartCondition implements Arrayable
      * @var int
      * 
      */
-    public $order = 0;
+    public $order;
+    
+    public function __construct($name, $type, $target, $value, $order = 0) {
+       $this->name = $name;
+       $this->type = $type;
+       $this->setTarget($target);
+       $this->value = $value;
+       $this->order = $order;
+    }
     
     /**
      * Set the order to apply this condition. If no argument order is applied we return 0 as
@@ -56,6 +62,27 @@ class CartCondition implements Arrayable
     public function setOrder($order = 1)
     {
         $this->order = is_numeric($this->order) ? (int)$this->order : 0;
+    }
+    
+    /**
+     * Sets the target for this condition
+     * @param int $target
+     * @return Integer
+     */
+    public function setTarget($target)
+    {
+        if($target !== self::TARGET_ITEM && $target !== self::TARGET_SUBTOTAL){
+            throw new Exceptions\InvalidConditionException('Invalid target');
+        }
+        $this->target = $target;
+    }
+    
+    /**
+     * Gets the target for this condition
+     * * @return Integer
+     */
+    public function getTarget(){
+        return $this->target;
     }
     
    

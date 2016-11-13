@@ -88,7 +88,9 @@ class CartItem implements Arrayable
         $this->name     = $name;
         $this->price    = floatval($price);
         $this->options  = new CartItemOptions($options);
-        $this->conditions = new CartConditionCollection($conditions);
+        if(!empty($conditions)){            
+            $this->conditions = new CartConditionCollection($conditions);
+        }
         $this->rowId = $this->generateRowId($id, $options);
     }
 
@@ -170,7 +172,7 @@ class CartItem implements Arrayable
         $this->name     = array_get($attributes, 'name', $this->name);
         $this->price    = array_get($attributes, 'price', $this->price);
         $this->options  = new CartItemOptions(array_get($attributes, 'options', $this->options));
-
+        $this->conditions  = new CartConditionCollection(array_get($attributes, 'conditions', $this->conditions));
         $this->rowId = $this->generateRowId($this->id, $this->options->all());
     }
 
@@ -230,28 +232,15 @@ class CartItem implements Arrayable
         $originalPrice = $this->price;
         $newPrice = 0.00;
         $processed = 0;
-        if( $this->hasConditions() )
-        {
-            if( is_array($this->conditions) )
-            {
-                foreach($this->conditions as $condition)
-                {
-                    if( $condition->getTarget() === 'item' )
-                    {
-                        $toBeCalculated = $processed > 0 ? $newPrice : $originalPrice;
-                        $newPrice = $condition->applyCondition($toBeCalculated);
-                        $processed++;
-                    }
+        if( $this->hasConditions() ){
+            foreach($this->conditions as $condition){
+                if( $condition->getTarget() === CartCondition::TARGET_ITEM ){
+                    $toBeCalculated = $processed > 0 ? $newPrice : $originalPrice;
+                    $newPrice = $condition->applyCondition($toBeCalculated);
+                    $processed++;
                 }
             }
-            else
-            {
-                if( $this->conditions->getTarget() === 'item' )
-                {
-                    $newPrice = $this->conditions->applyCondition($originalPrice);
-                }
-            }
-            return $newPrice;
+            return $processed === 0 ? $this->price : $newPrice;
         }
         return $originalPrice;
     }
@@ -262,7 +251,7 @@ class CartItem implements Arrayable
      */
     public function getPriceSumWithConditions()
     {
-        return $this->getPriceWithConditions() * $this->quantity;
+        return $this->getPriceWithConditions() * $this->qty;
     }
 
     /**
@@ -346,7 +335,7 @@ class CartItem implements Arrayable
      */
     public function getPriceSum()
     {
-        return Formatter::formatValue($this->price * $this->quantity, false);
+        return Formatter::numberFormat($this->price * $this->qty, false);
     }
    
     /**
@@ -363,7 +352,7 @@ class CartItem implements Arrayable
         {
             return count($this->conditions) > 0;
         }
-        $conditionInstance = CartCondition::class;
+        $conditionInstance = CartConditionCollection::class;
         if( $this->conditions instanceof $conditionInstance ){
             return true;
         }
