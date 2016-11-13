@@ -11,6 +11,7 @@ use Gloudemans\Shoppingcart\Contracts\Buyable;
 use Gloudemans\Shoppingcart\Exceptions\UnknownModelException;
 use Gloudemans\Shoppingcart\Exceptions\InvalidRowIDException;
 use Gloudemans\Shoppingcart\Exceptions\CartAlreadyStoredException;
+use Gloudemans\Shoppingcart\Exceptions\InvalidConditionException;
 
 class Cart
 {
@@ -37,6 +38,7 @@ class Cart
      */
     private $instance;
 
+    
     /**
      * Cart constructor.
      *
@@ -49,6 +51,7 @@ class Cart
         $this->events = $events;
 
         $this->instance(self::DEFAULT_INSTANCE);
+        $this->sessionKeyCartConditions = $this->instance.'_conditions';
     }
 
     /**
@@ -86,15 +89,15 @@ class Cart
      * @param array     $options
      * @return \Gloudemans\Shoppingcart\CartItem
      */
-    public function add($id, $name = null, $qty = null, $price = null, array $options = [])
+    public function add($id, $name = null, $qty = null, $price = null, array $options = [], $conditions = [])
     {
-        if ($this->isMulti($id)) {
+        if (Formatter::isMulti($id)) {
             return array_map(function ($item) {
                 return $this->add($item);
             }, $id);
         }
 
-        $cartItem = $this->createCartItem($id, $name, $qty, $price, $options);
+        $cartItem = $this->createCartItem($id, $name, $qty, $price, $options, $conditions);
 
         $content = $this->getContent();
 
@@ -110,7 +113,7 @@ class Cart
 
         return $cartItem;
     }
-
+   
     /**
      * Update the cart item with the given rowId.
      *
@@ -227,60 +230,44 @@ class Cart
     }
 
     /**
-     * Get the total price of the items in the cart.
+     * the new total in which conditions are already applied
      *
-     * @param int    $decimals
-     * @param string $decimalPoint
-     * @param string $thousandSeperator
-     * @return string
-     */
-    public function total($decimals = null, $decimalPoint = null, $thousandSeperator = null)
-    {
-        $content = $this->getContent();
-
-        $total = $content->reduce(function ($total, CartItem $cartItem) {
-            return $total + ($cartItem->qty * $cartItem->priceTax);
-        }, 0);
-
-        return $this->numberFormat($total, $decimals, $decimalPoint, $thousandSeperator);
-    }
-
-    /**
-     * Get the total tax of the items in the cart.
-     *
-     * @param int    $decimals
-     * @param string $decimalPoint
-     * @param string $thousandSeperator
      * @return float
      */
-    public function tax($decimals = null, $decimalPoint = null, $thousandSeperator = null)
+    public function total($formatted = false)
     {
-        $content = $this->getContent();
-
-        $tax = $content->reduce(function ($tax, CartItem $cartItem) {
-            return $tax + ($cartItem->qty * $cartItem->tax);
-        }, 0);
-
-        return $this->numberFormat($tax, $decimals, $decimalPoint, $thousandSeperator);
+        $subTotal = $this->getSubTotal(false);
+        $newTotal = 0.00;
+        $process = 0;
+        $conditions = $this->getConditions();
+        // if no conditions were added, just return the sub total
+        if( ! $conditions->count() ){
+            return $subTotal;
+        }
+        $conditions->each(function($cond) use ($subTotal, &$newTotal, &$process) {
+            if( $cond->getTarget() === 'subtotal' ){
+                $toBeCalculated = $process > 0 ? $newTotal : $subTotal;
+                $newTotal = $cond->applyCondition($toBeCalculated);
+                $process++;
+            }
+        });
+        return Formatter::formatValue($newTotal, $formatted);
     }
 
-    /**
-     * Get the subtotal (total - tax) of the items in the cart.
-     *
-     * @param int    $decimals
-     * @param string $decimalPoint
-     * @param string $thousandSeperator
+    
+        /**
+     * get cart sub total
+     * @param bool $formatted
      * @return float
      */
-    public function subtotal($decimals = null, $decimalPoint = null, $thousandSeperator = null)
+    public function subTotal($formatted = true)
     {
-        $content = $this->getContent();
-
-        $subTotal = $content->reduce(function ($subTotal, CartItem $cartItem) {
-            return $subTotal + ($cartItem->qty * $cartItem->price);
-        }, 0);
-
-        return $this->numberFormat($subTotal, $decimals, $decimalPoint, $thousandSeperator);
+        $cart = $this->getContent();
+        $sum = $cart->sum(function($item)
+        {
+            return $item->getPriceSumWithConditions();
+        });
+        return Formatter::formatValue(floatval($sum), $formatted);
     }
 
     /**
@@ -319,26 +306,7 @@ class Cart
 
         $this->session->put($this->instance, $content);
     }
-
-    /**
-     * Set the tax rate for the cart item with the given rowId.
-     *
-     * @param string    $rowId
-     * @param int|float $taxRate
-     * @return void
-     */
-    public function setTax($rowId, $taxRate)
-    {
-        $cartItem = $this->get($rowId);
-
-        $cartItem->setTaxRate($taxRate);
-
-        $content = $this->getContent();
-
-        $content->put($cartItem->rowId, $cartItem);
-
-        $this->session->put($this->instance, $content);
-    }
+    
 
     /**
      * Store an the current instance of the cart.
@@ -406,14 +374,11 @@ class Cart
      * @param string $attribute
      * @return float|null
      */
+    /*
     public function __get($attribute)
     {
         if($attribute === 'total') {
             return $this->total();
-        }
-
-        if($attribute === 'tax') {
-            return $this->tax();
         }
 
         if($attribute === 'subtotal') {
@@ -422,7 +387,8 @@ class Cart
 
         return null;
     }
-
+    */
+    
     /**
      * Get the carts content, if there is no cart content set yet, return a new empty Collection
      *
@@ -447,7 +413,7 @@ class Cart
      * @param array     $options
      * @return \Gloudemans\Shoppingcart\CartItem
      */
-    private function createCartItem($id, $name, $qty, $price, array $options)
+    private function createCartItem($id, $name, $qty, $price, array $options, array $conditions)
     {
         if ($id instanceof Buyable) {
             $cartItem = CartItem::fromBuyable($id, $qty ?: []);
@@ -457,27 +423,14 @@ class Cart
             $cartItem = CartItem::fromArray($id);
             $cartItem->setQuantity($id['qty']);
         } else {
-            $cartItem = CartItem::fromAttributes($id, $name, $price, $options);
+            $cartItem = CartItem::fromAttributes($id, $name, $price, $options, $conditions);
             $cartItem->setQuantity($qty);
         }
-
-        $cartItem->setTaxRate(config('cart.tax'));
 
         return $cartItem;
     }
 
-    /**
-     * Check if the item is a multidimensional array or an array of Buyables.
-     *
-     * @param mixed $item
-     * @return bool
-     */
-    private function isMulti($item)
-    {
-        if ( ! is_array($item)) return false;
-
-        return is_array(head($item)) || head($item) instanceof Buyable;
-    }
+    
 
     /**
      * @param $identifier
@@ -522,27 +475,219 @@ class Cart
         return is_null($connection) ? config('database.default') : $connection;
     }
 
-    /**
-     * Get the Formated number
+    
+    
+     /**
+     * add a condition on the cart
      *
-     * @param $value
-     * @param $decimals
-     * @param $decimalPoint
-     * @param $thousandSeperator
-     * @return string
+     * @param CartCondition|array $condition
+     * @return $this
+     * @throws InvalidConditionException
      */
-    private function numberFormat($value, $decimals, $decimalPoint, $thousandSeperator)
+    public function condition($condition)
     {
-        if(is_null($decimals)){
-            $decimals = is_null(config('cart.format.decimals')) ? 2 : config('cart.format.decimals');
+        if( is_array($condition) ){
+            foreach($condition as $c){
+                $this->condition($c);
+            }
+            return $this;
         }
-        if(is_null($decimalPoint)){
-            $decimalPoint = is_null(config('cart.format.decimal_point')) ? '.' : config('cart.format.decimal_point');
+        if( ! $condition instanceof CartCondition ){
+            throw new InvalidConditionException('Argument 1 must be an instance of '.CartCondition::class);
         }
-        if(is_null($thousandSeperator)){
-            $thousandSeperator = is_null(config('cart.format.thousand_seperator')) ? ',' : config('cart.format.thousand_seperator');
+        $conditions = $this->getConditions();
+        // Check if order has been applied
+        if($condition->order === 0) {
+            $last = $conditions->last();
+            $condition->setOrder(!is_null($last) ? $last->order + 1 : 1);
         }
-
-        return number_format($value, $decimals, $decimalPoint, $thousandSeperator);
+        $conditions->put($condition->name, $condition);
+        $conditions = $conditions->sortBy(function ($condition, $key) {
+            return $condition->order;
+        });
+        $this->saveConditions($conditions);
+        return $this;
     }
+     /**
+     * get conditions applied on the cart
+     *
+     * @return CartConditionCollection
+     */
+    public function getConditions()
+    {
+        return new CartConditionCollection($this->session->get($this->sessionKeyCartConditions));
+    }
+    /**
+     * get condition applied on the cart by its name
+     *
+     * @param $conditionName
+     * @return CartCondition
+     */
+    public function getCondition($conditionName)
+    {
+        return $this->getConditions()->get($conditionName);
+    }
+    /**
+    * Get all the condition filtered by Type
+    * Please Note that this will only return condition added on cart bases, not those conditions added
+    * specifically on an per item bases
+    *
+    * @param $type
+    * @return CartConditionCollection
+    */
+    public function getConditionsByType($type)
+    {
+        return $this->getConditions()->filter(function(CartCondition $condition) use ($type)
+        {
+            return $condition->type == $type;
+        });
+    }
+    /**
+     * Remove all the condition with the $type specified
+     * Please Note that this will only remove condition added on cart bases, not those conditions added
+     * specifically on an per item bases
+     *
+     * @param $type
+     * @return $this
+     */
+    public function removeConditionsByType($type)
+    {
+        $this->getConditionsByType($type)->each(function($condition)
+        {
+            $this->removeCartCondition($condition->name);
+        });
+    }
+    /**
+     * save the cart conditions
+     *
+     * @param $conditions
+     */
+    protected function saveConditions($conditions)
+    {
+        $this->session->put($this->sessionKeyCartConditions, $conditions);
+    }
+    
+    /**
+     * removes a condition on a cart by condition name,
+     * this can only remove conditions that are added on cart bases not conditions that are added on an item/product.
+     * If you wish to remove a condition that has been added for a specific item/product, you may
+     * use the removeItemCondition(itemId, conditionName) method instead.
+     *
+     * @param $conditionName
+     * @return void
+     */
+    public function removeCartCondition($conditionName)
+    {
+        $conditions = $this->getConditions();
+        $conditions->pull($conditionName);
+        $this->saveConditions($conditions);
+    }
+    
+    /**
+     * check if an item has condition
+     *
+     * @param $item
+     * @return bool
+     */
+    protected function itemHasConditions($item)
+    {
+        if( ! isset($item->conditions) ) return false;
+        if( is_array($item->conditions) )
+        {
+            return count($item->conditions) > 0;
+        }
+        $conditionInstance = CartCondition::class;
+        if( $item->conditions instanceof $conditionInstance ){
+            return true;
+        }
+        return false;
+    }
+    
+    /**
+     * remove a condition that has been applied on an item that is already on the cart
+     *
+     * @param $rowId
+     * @param $conditionName
+     * @return bool
+     */
+    public function removeItemCondition($rowId, $conditionName)
+    {
+        if( ! $item = $this->getContent()->get($rowId) )
+        {
+            return false;
+        }
+        if( $this->itemHasConditions($item) )
+        {
+            // NOTE:
+            // we do it this way, we get first conditions and store
+            // it in a temp variable $originalConditions, then we will modify the array there
+            // and after modification we will store it again on $item->conditions
+            // This is because of ArrayAccess implementation
+            // see link for more info: http://stackoverflow.com/questions/20053269/indirect-modification-of-overloaded-element-of-splfixedarray-has-no-effect
+            $tempConditionsHolder = $item->conditions;
+            // if the item's conditions is in array format
+            // we will iterate through all of it and check if the name matches
+            // to the given name the user wants to remove, if so, remove it
+            if( is_array($tempConditionsHolder) )
+            {
+                foreach($tempConditionsHolder as $k => $condition)
+                {
+                    if( $condition->name == $conditionName )
+                    {
+                        unset($tempConditionsHolder[$k]);
+                    }
+                }
+                $item->conditions = $tempConditionsHolder;
+            }
+            // if the item condition is not an array, we will check if it is
+            // an instance of a Condition, if so, we will check if the name matches
+            // on the given condition name the user wants to remove, if so,
+            // lets just make $item->conditions an empty array as there's just 1 condition on it anyway
+            else
+            {
+                $conditionInstance = CartCondition::class;
+                if ($item->conditions instanceof $conditionInstance){
+                    if ($tempConditionsHolder->name == $conditionName){
+                        $item->conditions = [];
+                    }
+                }
+            }
+        }
+        $this->update($rowId, [
+            'conditions' => $item->conditions
+        ]);
+        return true;
+    }
+    /**
+     * remove all conditions that has been applied on an item that is already on the cart
+     *
+     * @param $rowId
+     * @return bool
+     */
+    public function clearItemConditions($rowId)
+    {
+        if( ! $item = $this->getContent()->get($rowId) )
+        {
+            return false;
+        }
+        $this->update($rowId, [
+            'conditions' => []
+        ]);
+        return true;
+    }
+    /**
+     * clears all conditions on a cart,
+     * this does not remove conditions that has been added specifically to an item/product.
+     * If you wish to remove a specific condition to a product, you may use the method: removeItemCondition($rowId, $conditionName)
+     *
+     * @return void
+     */
+    public function clearCartConditions()
+    {
+        $this->session->put(
+            $this->sessionKeyCartConditions,
+            []
+        );
+    }
+
 }

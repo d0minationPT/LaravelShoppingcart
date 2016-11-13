@@ -49,6 +49,13 @@ class CartItem implements Arrayable
      * @var array
      */
     public $options;
+    
+    /**
+     * The options for this cart item.
+     *
+     * @var array
+     */
+    public $conditions;
 
     /**
      * The FQN of the associated model.
@@ -58,13 +65,6 @@ class CartItem implements Arrayable
     private $associatedModel = null;
 
     /**
-     * The tax rate for the cart item.
-     *
-     * @var int|float
-     */
-    private $taxRate = 0;
-
-    /**
      * CartItem constructor.
      *
      * @param int|string $id
@@ -72,7 +72,7 @@ class CartItem implements Arrayable
      * @param float      $price
      * @param array      $options
      */
-    public function __construct($id, $name, $price, array $options = [])
+    public function __construct($id, $name, $price, array $options = [], array $conditions = [])
     {
         if(empty($id)) {
             throw new \InvalidArgumentException('Please supply a valid identifier.');
@@ -88,6 +88,7 @@ class CartItem implements Arrayable
         $this->name     = $name;
         $this->price    = floatval($price);
         $this->options  = new CartItemOptions($options);
+        $this->conditions = new CartConditionCollection($conditions);
         $this->rowId = $this->generateRowId($id, $options);
     }
 
@@ -99,23 +100,11 @@ class CartItem implements Arrayable
      * @param string $thousandSeperator
      * @return string
      */
-    public function price($decimals = null, $decimalPoint = null, $thousandSeperator = null)
+    public function price($formatted = false, $decimals = null, $decimalPoint = null, $thousandSeperator = null)
     {
-        return $this->numberFormat($this->price, $decimals, $decimalPoint, $thousandSeperator);
+        return Formatter::numberFormat($this->subtotal(), true, $decimals, $decimalPoint, $thousandSeperator);
     }
     
-    /**
-     * Returns the formatted price with TAX.
-     *
-     * @param int    $decimals
-     * @param string $decimalPoint
-     * @param string $thousandSeperator
-     * @return string
-     */
-    public function priceTax($decimals = null, $decimalPoint = null, $thousandSeperator = null)
-    {
-        return $this->numberFormat($this->priceTax, $decimals, $decimalPoint, $thousandSeperator);
-    }
 
     /**
      * Returns the formatted subtotal.
@@ -126,50 +115,21 @@ class CartItem implements Arrayable
      * @param string $thousandSeperator
      * @return string
      */
-    public function subtotal($decimals = null, $decimalPoint = null, $thousandSeperator = null)
+    public function subtotal($formatted = false, $decimals = null, $decimalPoint = null, $thousandSeperator = null)
     {
-        return $this->numberFormat($this->subtotal, $decimals, $decimalPoint, $thousandSeperator);
+        return Formatter::numberFormat($this->getPriceSumWithConditions(), $formatted, $decimals, $decimalPoint, $thousandSeperator);
     }
     
-    /**
-     * Returns the formatted total.
-     * Total is price for whole CartItem with TAX
+   /**
+     * the new total in which conditions are already applied
      *
-     * @param int    $decimals
-     * @param string $decimalPoint
-     * @param string $thousandSeperator
-     * @return string
+     * @return float
      */
-    public function total($decimals = null, $decimalPoint = null, $thousandSeperator = null)
-    {
-        return $this->numberFormat($this->total, $decimals, $decimalPoint, $thousandSeperator);
+    public function total($formatted = false, $decimals = null, $decimalPoint = null, $thousandSeperator = null){
+      
+        return Formatter::numberFormat($this->getPriceWithConditions(), $formatted, $decimals, $decimalPoint, $thousandSeperator);
     }
 
-    /**
-     * Returns the formatted tax.
-     *
-     * @param int    $decimals
-     * @param string $decimalPoint
-     * @param string $thousandSeperator
-     * @return string
-     */
-    public function tax($decimals = null, $decimalPoint = null, $thousandSeperator = null)
-    {
-        return $this->numberFormat($this->tax, $decimals, $decimalPoint, $thousandSeperator);
-    }
-    
-    /**
-     * Returns the formatted tax.
-     *
-     * @param int    $decimals
-     * @param string $decimalPoint
-     * @param string $thousandSeperator
-     * @return string
-     */
-    public function taxTotal($decimals = null, $decimalPoint = null, $thousandSeperator = null)
-    {
-        return $this->numberFormat($this->taxTotal, $decimals, $decimalPoint, $thousandSeperator);
-    }
 
     /**
      * Set the quantity for this cart item.
@@ -195,7 +155,6 @@ class CartItem implements Arrayable
         $this->id       = $item->getBuyableIdentifier($this->options);
         $this->name     = $item->getBuyableDescription($this->options);
         $this->price    = $item->getBuyablePrice($this->options);
-        $this->priceTax = $this->price + $this->tax;
     }
 
     /**
@@ -210,7 +169,6 @@ class CartItem implements Arrayable
         $this->qty      = array_get($attributes, 'qty', $this->qty);
         $this->name     = array_get($attributes, 'name', $this->name);
         $this->price    = array_get($attributes, 'price', $this->price);
-        $this->priceTax = $this->price + $this->tax;
         $this->options  = new CartItemOptions(array_get($attributes, 'options', $this->options));
 
         $this->rowId = $this->generateRowId($this->id, $this->options->all());
@@ -229,18 +187,7 @@ class CartItem implements Arrayable
         return $this;
     }
 
-    /**
-     * Set the tax rate.
-     *
-     * @param int|float $taxRate
-     * @return \Gloudemans\Shoppingcart\CartItem
-     */
-    public function setTaxRate($taxRate)
-    {
-        $this->taxRate = $taxRate;
-        
-        return $this;
-    }
+   
 
     /**
      * Get an attribute from the cart item or get the associated model.
@@ -250,35 +197,72 @@ class CartItem implements Arrayable
      */
     public function __get($attribute)
     {
+        
         if(property_exists($this, $attribute)) {
             return $this->{$attribute};
         }
 
-        if($attribute === 'priceTax') {
-            return $this->price + $this->tax;
-        }
+   
         
         if($attribute === 'subtotal') {
-            return $this->qty * $this->price;
+            return $this->subtotal(false);
         }
         
         if($attribute === 'total') {
-            return $this->qty * ($this->priceTax);
+            return $this->total(false);
         }
 
-        if($attribute === 'tax') {
-            return $this->price * ($this->taxRate / 100);
-        }
-        
-        if($attribute === 'taxTotal') {
-            return $this->tax * $this->qty;
-        }
-
+       
         if($attribute === 'model') {
             return with(new $this->associatedModel)->find($this->id);
         }
 
         return null;
+    }
+    
+    /**
+     * get the single price in which conditions are already applied
+     * @param bool $formatted
+     * @return mixed|null
+     */
+    public function getPriceWithConditions()
+    {
+        $originalPrice = $this->price;
+        $newPrice = 0.00;
+        $processed = 0;
+        if( $this->hasConditions() )
+        {
+            if( is_array($this->conditions) )
+            {
+                foreach($this->conditions as $condition)
+                {
+                    if( $condition->getTarget() === 'item' )
+                    {
+                        $toBeCalculated = $processed > 0 ? $newPrice : $originalPrice;
+                        $newPrice = $condition->applyCondition($toBeCalculated);
+                        $processed++;
+                    }
+                }
+            }
+            else
+            {
+                if( $this->conditions->getTarget() === 'item' )
+                {
+                    $newPrice = $this->conditions->applyCondition($originalPrice);
+                }
+            }
+            return $newPrice;
+        }
+        return $originalPrice;
+    }
+    /**
+     * get the sum of price in which conditions are already applied
+     * @param bool $formatted
+     * @return mixed|null
+     */
+    public function getPriceSumWithConditions()
+    {
+        return $this->getPriceWithConditions() * $this->quantity;
     }
 
     /**
@@ -288,9 +272,9 @@ class CartItem implements Arrayable
      * @param array                                      $options
      * @return \Gloudemans\Shoppingcart\CartItem
      */
-    public static function fromBuyable(Buyable $item, array $options = [])
+    public static function fromBuyable(Buyable $item, array $options = [], $conditions = [])
     {
-        return new self($item->getBuyableIdentifier($options), $item->getBuyableDescription($options), $item->getBuyablePrice($options), $options);
+        return new self($item->getBuyableIdentifier($options), $item->getBuyableDescription($options), $item->getBuyablePrice($options), $options, $conditions);
     }
 
     /**
@@ -302,8 +286,8 @@ class CartItem implements Arrayable
     public static function fromArray(array $attributes)
     {
         $options = array_get($attributes, 'options', []);
-
-        return new self($attributes['id'], $attributes['name'], $attributes['price'], $options);
+        $conditions = array_get($attributes, 'conditions', []);
+        return new self($attributes['id'], $attributes['name'], $attributes['price'], $options, $conditions);
     }
 
     /**
@@ -315,9 +299,9 @@ class CartItem implements Arrayable
      * @param array      $options
      * @return \Gloudemans\Shoppingcart\CartItem
      */
-    public static function fromAttributes($id, $name, $price, array $options = [])
+    public static function fromAttributes($id, $name, $price, array $options = [], array $conditions = [])
     {
-        return new self($id, $name, $price, $options);
+        return new self($id, $name, $price, $options, $conditions);
     }
 
     /**
@@ -348,32 +332,43 @@ class CartItem implements Arrayable
             'qty'      => $this->qty,
             'price'    => $this->price,
             'options'  => $this->options,
-            'tax'      => $this->tax,
-            'subtotal' => $this->subtotal
+            'conditions' => $this->conditions,
+            'subtotal'  => $this->subtotal(),
+            'total'     => $this->total(),
         ];
     }
 
+    
     /**
-     * Get the Formated number
+     * get the sum of price
      *
-     * @param $value
-     * @param $decimals
-     * @param $decimalPoint
-     * @param $thousandSeperator
-     * @return string
+     * @return mixed|null
      */
-    private function numberFormat($value, $decimals, $decimalPoint, $thousandSeperator)
+    public function getPriceSum()
     {
-        if(is_null($decimals)){
-            $decimals = is_null(config('cart.format.decimals')) ? 2 : config('cart.format.decimals');
-        }
-        if(is_null($decimalPoint)){
-            $decimalPoint = is_null(config('cart.format.decimal_point')) ? '.' : config('cart.format.decimal_point');
-        }
-        if(is_null($thousandSeperator)){
-            $thousandSeperator = is_null(config('cart.format.thousand_seperator')) ? ',' : config('cart.format.thousand_seperator');
-        }
-
-        return number_format($value, $decimals, $decimalPoint, $thousandSeperator);
+        return Formatter::formatValue($this->price * $this->quantity, false);
     }
+   
+    /**
+     * check if item has conditions
+     *
+     * @return bool
+     */
+    public function hasConditions()
+    {
+        if( ! isset($this->conditions) ){
+            return false;
+        }
+        if( is_array($this->conditions) )
+        {
+            return count($this->conditions) > 0;
+        }
+        $conditionInstance = CartCondition::class;
+        if( $this->conditions instanceof $conditionInstance ){
+            return true;
+        }
+        return false;
+    }
+    
+    
 }
