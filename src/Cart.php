@@ -65,7 +65,7 @@ class Cart
         $instance = $instance ?: self::DEFAULT_INSTANCE;
 
         $this->instance = sprintf('%s.%s', 'cart', $instance);
-
+        $this->sessionKeyCartConditions = $this->instance.'_conditions';
         return $this;
     }
 
@@ -96,9 +96,7 @@ class Cart
                 return $this->add($item);
             }, $id);
         }
-
         $cartItem = $this->createCartItem($id, $name, $qty, $price, $options, $conditions);
-
         $content = $this->getContent();
 
         if ($content->has($cartItem->rowId)) {
@@ -110,7 +108,6 @@ class Cart
         $this->events->fire('cart.added', $cartItem);
 
         $this->session->put($this->instance, $content);
-
         return $cartItem;
     }
    
@@ -236,26 +233,48 @@ class Cart
      */
     public function total($formatted = false)
     {
-        $subTotal = $this->subtotal(false);
+        
+        $cart = $this->getContent();
+        
+        $subtotal = $cart->sum(function($item)
+        {
+            return $item->getPriceSumWithConditions();
+        });
+        
         $newTotal = 0.00;
         $process = 0;
         $conditions = $this->getConditions();
         // if no conditions were added, just return the sub total
         if( ! $conditions->count() ){
-            $newTotal = $subTotal;
+            $newTotal = $subtotal;
         }else{
-            $conditions->each(function($cond) use ($subTotal, &$newTotal, &$process) {
-                if( $cond->getTarget() === CartCondition::TARGET_SUBTOTAL ){
-                    $toBeCalculated = $process > 0 ? $newTotal : $subTotal;
+            
+            $conditions->each(function($cond) use ($subtotal, &$newTotal, &$process) {
+                if( $cond->getTarget() === CartCondition::TARGET_TOTAL ){
+                    $toBeCalculated = $process > 0 ? $newTotal : $subtotal;
                     $newTotal = $cond->applyCondition($toBeCalculated);
                     $process++;
                 }
             });
             if($process === 0){
-                $newTotal = $subTotal;
+                $newTotal = $subtotal;
             }
         }
         return Formatter::numberFormat($newTotal, $formatted);
+    }
+    
+    /**
+     * the tax in which conditions are already applied
+     *
+     * @return float
+     */
+    public function tax($formatted = false)
+    {
+        $tax = 0.00;
+        foreach($this->getContent() as $cartItem){
+            $tax += $cartItem->getPriceSumWithConditions() - $cartItem->getPriceSum();
+        }
+        return Formatter::numberFormat($tax, $formatted);
     }
 
     
@@ -270,7 +289,7 @@ class Cart
         
         $sum = $cart->sum(function($item)
         {
-            return $item->getPriceSumWithConditions();
+            return $item->getPriceSumWithoutVAT();
         });
         return Formatter::numberFormat($sum, $formatted);
     }
@@ -431,7 +450,7 @@ class Cart
             $cartItem = CartItem::fromAttributes($id, $name, $price, $options, $conditions);
             $cartItem->setQuantity($qty);
         }
-
+        
         return $cartItem;
     }
 
@@ -586,7 +605,7 @@ class Cart
             // to avoid hitting this error "Indirect modification of overloaded element of Darryldecode\Cart\ItemCollection has no effect"
             // this is due to laravel Collection instance that implements Array Access
             // // see link for more info: http://stackoverflow.com/questions/20053269/indirect-modification-of-overloaded-element-of-splfixedarray-has-no-effect
-            $itemConditionTempHolder = $product->conditions;
+            $itemConditionTempHolder = $product->conditions ?: [];
             if( is_array($itemConditionTempHolder) )
             {
                 array_push($itemConditionTempHolder, $itemCondition);

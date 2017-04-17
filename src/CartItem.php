@@ -119,7 +119,7 @@ class CartItem implements Arrayable
      */
     public function subtotal($formatted = false, $decimals = null, $decimalPoint = null, $thousandSeperator = null)
     {
-        return Formatter::numberFormat($this->getPriceSumWithConditions(), $formatted, $decimals, $decimalPoint, $thousandSeperator);
+        return Formatter::numberFormat($this->getPriceSumWithoutVAT(), $formatted, $decimals, $decimalPoint, $thousandSeperator);
     }
     
    /**
@@ -244,6 +244,31 @@ class CartItem implements Arrayable
         }
         return $originalPrice;
     }
+    
+    /**
+     * get the single price in which conditions are already applied
+     * @param bool $formatted
+     * @return mixed|null
+     */
+    public function getPriceWithoutVAT(){
+        $originalPrice = $this->price;
+        $newPrice = 0.00;
+        $processed = 0;
+        if( $this->hasConditions() ){
+            
+            foreach($this->conditions as $condition){
+                if( $condition->getTarget() === CartCondition::TARGET_ITEM && $condition->type !== CartCondition::TYPE_TAX){
+                    
+                    $toBeCalculated = $processed > 0 ? $newPrice : $originalPrice;
+                    $newPrice = $condition->applyCondition($toBeCalculated);
+                    $processed++;
+                }
+            }
+            return $processed === 0 ? $this->price : $newPrice;
+        }
+        
+        return $originalPrice;
+    }
     /**
      * get the sum of price in which conditions are already applied
      * @param bool $formatted
@@ -254,6 +279,16 @@ class CartItem implements Arrayable
         return $this->getPriceWithConditions() * $this->qty;
     }
 
+    
+    /**
+     * get the sum of price in which conditions are already applied
+     * @param bool $formatted
+     * @return mixed|null
+     */
+    public function getPriceSumWithoutVAT()
+    {
+        return $this->getPriceWithoutVAT() * $this->qty;
+    }
     /**
      * Create a new instance from a Buyable.
      *
@@ -261,8 +296,7 @@ class CartItem implements Arrayable
      * @param array                                      $options
      * @return \Gloudemans\Shoppingcart\CartItem
      */
-    public static function fromBuyable(Buyable $item, array $options = [], $conditions = [])
-    {
+    public static function fromBuyable(Buyable $item, array $options = [], $conditions = []){
         return new self($item->getBuyableIdentifier($options), $item->getBuyableDescription($options), $item->getBuyablePrice($options), $options, $conditions);
     }
 

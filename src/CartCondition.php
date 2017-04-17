@@ -8,6 +8,7 @@ class CartCondition
 {
     const TYPE_TAX = 'tax',
           TYPE_DISCOUNT = 'discount',
+          TYPE_FEE = 'fee',
             
           TARGET_SUBTOTAL = 1,
           TARGET_ITEM = 3;
