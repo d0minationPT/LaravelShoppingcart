@@ -1,4 +1,4 @@
-<?php
+f<?php
 
 namespace Gloudemans\Shoppingcart;
 
@@ -536,7 +536,9 @@ class Cart
         return $cartItem;
     }
 
-    
+    public function query(){
+        return $this->getConnection()->table($this->getTableName());
+    }
 
     /**
      * @param $identifier
