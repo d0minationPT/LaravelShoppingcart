@@ -106,8 +106,11 @@ class Cart
         $content->put($cartItem->rowId, $cartItem);
         
         $this->events->fire('cart.added', $cartItem);
-
+        
         $this->session->put($this->instance, $content);
+        
+        $this->events->fire('cart.saved', $this);
+        
         return $cartItem;
     }
    
@@ -152,6 +155,8 @@ class Cart
 
         $this->session->put($this->instance, $content);
 
+        $this->events->fire('cart.saved', $this);
+        
         return $cartItem;
     }
 
