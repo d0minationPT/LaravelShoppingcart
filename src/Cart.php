@@ -424,6 +424,38 @@ class Cart
         $this->getConnection()->table($this->getTableName())
             ->where('identifier', $identifier)->delete();
     }
+    
+     /**
+     * Get the cart with the given identifier from the DB.
+     *
+     * @param mixed $identifier
+     * @return void
+     */
+    public function getFromDB($identifier)
+    {
+        if( ! $this->storedCartWithIdentifierExists($identifier)) {
+            return;
+        }
+
+        $stored = $this->getConnection()->table($this->getTableName())
+            ->where('identifier', $identifier)->first();
+
+        $storedContent = unserialize($stored->content);
+
+        $currentInstance = $this->currentInstance();
+
+        $this->instance($stored->instance);
+
+        $content = $this->getContent();
+
+        foreach ($storedContent as $cartItem) {
+            $content->put($cartItem->rowId, $cartItem);
+        }
+
+        $this->instance($currentInstance);
+
+        return $this;
+    }
 
     /**
      * Magic method to make accessing the total, tax and subtotal properties possible.
