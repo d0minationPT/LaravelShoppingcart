@@ -370,11 +370,13 @@ class Cart
     {
         $content = $this->getContent();
 
-        $existingCart = $this->getConnection()->table($this->getTableName())->where('identifier', $identifier)->first();
-        if (!empty($existingCart)) {
-            $existingCart->instance = $this->currentInstance();
-            $existingCart->content = serialize($content);
-            $existingCart->save();
+        if($this->storedCartWithIdentifierExists($identifier)) {
+            $this->getConnection()->table($this->getTableName())
+                    ->where('identifier', $identifier)
+                    ->update([
+                        'instance' => $this->currentInstance(),
+                        'content' => serialize($content)
+                    ]);
         }else{
             $this->getConnection()->table($this->getTableName())->insert([
                 'identifier' => $identifier,
