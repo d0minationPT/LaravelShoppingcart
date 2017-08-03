@@ -12,6 +12,7 @@ use Gloudemans\Shoppingcart\Exceptions\UnknownModelException;
 use Gloudemans\Shoppingcart\Exceptions\InvalidRowIDException;
 use Gloudemans\Shoppingcart\Exceptions\CartAlreadyStoredException;
 use Gloudemans\Shoppingcart\Exceptions\InvalidConditionException;
+use Illuminate\Support\Facades\Auth;
 
 class Cart
 {
@@ -354,7 +355,8 @@ class Cart
         $this->getConnection()->table($this->getTableName())->insert([
             'identifier' => $identifier,
             'instance' => $this->currentInstance(),
-            'content' => serialize($content)
+            'content' => serialize($content),
+            'user_id' => Auth::id()
         ]);
 
         $this->events->fire('cart.stored');
@@ -381,7 +383,8 @@ class Cart
             $this->getConnection()->table($this->getTableName())->insert([
                 'identifier' => $identifier,
                 'instance' => $this->currentInstance(),
-                'content' => serialize($content)
+                'content' => serialize($content),
+                'user_id' => Auth::id()
             ]);
         }
 
@@ -394,7 +397,7 @@ class Cart
      * @param mixed $identifier
      * @return void
      */
-    public function restore($identifier)
+    public function restore($identifier, bool $delete = false)
     {
         if( ! $this->storedCartWithIdentifierExists($identifier)) {
             return;
@@ -420,9 +423,10 @@ class Cart
         $this->session->put($this->instance, $content);
 
         $this->instance($currentInstance);
-
-        $this->getConnection()->table($this->getTableName())
-            ->where('identifier', $identifier)->delete();
+        if($delete){
+            $this->getConnection()->table($this->getTableName())
+                ->where('identifier', $identifier)->delete();
+        }
     }
     
      /**
