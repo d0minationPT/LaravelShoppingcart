@@ -433,9 +433,13 @@ class Cart
 
         $this->instance($currentInstance);
         if($delete){
-            $this->getConnection()->table($this->getTableName())
-                ->where('identifier', $identifier)->delete();
+            $this->deleteFromDB($identifier);
         }
+    }
+    
+    public function deleteFromDB($identifier){
+        $this->getConnection()->table($this->getTableName())
+                ->where('identifier', $identifier)->delete();
     }
     
      /**
