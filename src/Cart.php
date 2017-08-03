@@ -594,6 +594,7 @@ class Cart
     protected function saveConditions($conditions)
     {
         $this->session->put($this->sessionKeyCartConditions, $conditions);
+        $this->events->fire('cart.saved', $this);
     }
         /**
      * add condition on an existing item on the cart
