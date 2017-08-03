@@ -359,6 +359,32 @@ class Cart
 
         $this->events->fire('cart.stored');
     }
+    
+     /**
+     * Save the current instance of the cart.
+     *
+     * @param mixed $identifier
+     * @return void
+     */
+    public function save($identifier)
+    {
+        $content = $this->getContent();
+
+        $existingCart = $this->getConnection()->table($this->getTableName())->where('identifier', $identifier)->first();
+        if (!empty($existingCart)) {
+            $existingCart->instance = $this->currentInstance();
+            $existingCart->content = serialize($content);
+            $existingCart->save();
+        }else{
+            $this->getConnection()->table($this->getTableName())->insert([
+                'identifier' => $identifier,
+                'instance' => $this->currentInstance(),
+                'content' => serialize($content)
+            ]);
+        }
+
+        $this->events->fire('cart.stored');
+    }
 
     /**
      * Restore the cart with the given identifier.
