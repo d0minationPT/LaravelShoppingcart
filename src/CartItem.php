@@ -4,8 +4,9 @@ namespace Gloudemans\Shoppingcart;
 
 use Illuminate\Contracts\Support\Arrayable;
 use Gloudemans\Shoppingcart\Contracts\Buyable;
+use Illuminate\Contracts\Support\Jsonable;
 
-class CartItem implements Arrayable
+class CartItem implements Arrayable, Jsonable
 {
     /**
      * The rowID of the cart item.
@@ -41,7 +42,6 @@ class CartItem implements Arrayable
      * @var float
      */
     public $price;
-    
 
     /**
      * The options for this cart item.
@@ -363,9 +363,24 @@ class CartItem implements Arrayable
 
     
     /**
-     * get the sum of price
+     * Convert the object to its JSON representation.
      *
-     * @return mixed|null
+     * @param int $options
+     * @return string
+     */
+    public function toJson($options = 0)
+    {
+        return json_encode($this->toArray(), $options);
+    }
+
+    /**
+     * Get the formatted number.
+     *
+     * @param float  $value
+     * @param int    $decimals
+     * @param string $decimalPoint
+     * @param string $thousandSeperator
+     * @return string
      */
     public function getPriceSum()
     {
