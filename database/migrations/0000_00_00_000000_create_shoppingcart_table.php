@@ -16,7 +16,7 @@ class CreateShoppingcartTable extends Migration
             $table->string('identifier');
             $table->string('instance');
             $table->longText('content');
-            $table->nullableTimestamps();
+            $table->timestamps();
             $table->timestamp('notified_at')->nullable();
             $table->unsignedBigInteger('user_id')->nullable();
             $table->foreign('user_id')->references('id')->on('users')->onDelete('cascade');

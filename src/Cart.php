@@ -178,6 +178,8 @@ class Cart
         $this->events->fire('cart.removed', $cartItem);
 
         $this->session->put($this->instance, $content);
+        
+        $this->events->fire('cart.saved', $this);
     }
 
     /**
@@ -395,7 +397,7 @@ class Cart
             ]);
         }
 
-        $this->events->fire('cart.stored');
+        $this->events->fire('cart.saved');
     }
 
     /**
