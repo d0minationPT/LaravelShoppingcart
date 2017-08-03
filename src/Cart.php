@@ -351,12 +351,16 @@ class Cart
         if ($this->storedCartWithIdentifierExists($identifier)) {
             throw new CartAlreadyStoredException("A cart with identifier {$identifier} was already stored.");
         }
-
+        
+        $today = date('Y-m-d H:i:s');
+        
         $this->getConnection()->table($this->getTableName())->insert([
             'identifier' => $identifier,
             'instance' => $this->currentInstance(),
             'content' => serialize($content),
-            'user_id' => Auth::id()
+            'user_id' => Auth::id(),
+            'created_at' => $today,
+            'updated_at' => $today,
         ]);
 
         $this->events->fire('cart.stored');
@@ -371,20 +375,23 @@ class Cart
     public function save($identifier)
     {
         $content = $this->getContent();
-
+        $today = date('Y-m-d H:i:s');
         if($this->storedCartWithIdentifierExists($identifier)) {
             $this->getConnection()->table($this->getTableName())
                     ->where('identifier', $identifier)
                     ->update([
                         'instance' => $this->currentInstance(),
-                        'content' => serialize($content)
+                        'content' => serialize($content),
+                        'updated_at' => $today,
                     ]);
         }else{
             $this->getConnection()->table($this->getTableName())->insert([
                 'identifier' => $identifier,
                 'instance' => $this->currentInstance(),
                 'content' => serialize($content),
-                'user_id' => Auth::id()
+                'user_id' => Auth::id(),
+                'created_at' => $today,
+                'updated_at' => $today,
             ]);
         }
 
