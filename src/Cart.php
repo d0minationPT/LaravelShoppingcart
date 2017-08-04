@@ -397,7 +397,7 @@ class Cart
             ]);
         }
 
-        $this->events->fire('cart.saved');
+        $this->events->fire('cart.saved', $this);
     }
 
     /**
