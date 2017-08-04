@@ -396,8 +396,6 @@ class Cart
                 'updated_at' => $today,
             ]);
         }
-
-        $this->events->fire('cart.saved', $this);
     }
 
     /**
